@@ -6,6 +6,7 @@ part of dart._http;
 
 class _HttpHeaders implements HttpHeaders {
   final Map<String, List<String>> _headers;
+  Map<String, String> _originalHeaderNames;
   final String protocolVersion;
 
   bool _mutable = true; // Are the headers currently mutable?
@@ -50,9 +51,16 @@ class _HttpHeaders implements HttpHeaders {
     return values[0];
   }
 
-  void add(String name, value) {
+  void add(String name, value,{ bool preserveHeaderCase = true}) {
     _checkMutable();
-    _addAll(_validateField(name), value);
+    String lowercaseName = _validateField(name);
+
+    if (preserveHeaderCase && name != lowercaseName) {
+      (_originalHeaderNames ??= {})[lowercaseName] = name;
+    } else {
+      _originalHeaderNames?.remove(lowercaseName);
+    }
+    _addAll(lowercaseName, value);
   }
 
   void _addAll(String name, value) {
@@ -66,14 +74,20 @@ class _HttpHeaders implements HttpHeaders {
     }
   }
 
-  void set(String name, Object value) {
+  void set(String name, Object value, { bool preserveHeaderCase = true}) {
     _checkMutable();
-    name = _validateField(name);
-    _headers.remove(name);
-    if (name == HttpHeaders.transferEncodingHeader) {
+    String lowercaseName = _validateField(name);
+    _headers.remove(lowercaseName);
+    _originalHeaderNames?.remove(lowercaseName);
+    if (lowercaseName == HttpHeaders.transferEncodingHeader) {
       _chunkedTransferEncoding = false;
     }
-    _addAll(name, value);
+    if (preserveHeaderCase && name != lowercaseName) {
+      (_originalHeaderNames ??= {})[lowercaseName] = name;
+    } else {
+      _originalHeaderNames?.remove(lowercaseName);
+    }
+    _addAll(lowercaseName, value);
   }
 
   void remove(String name, Object value) {
@@ -97,10 +111,14 @@ class _HttpHeaders implements HttpHeaders {
     _checkMutable();
     name = _validateField(name);
     _headers.remove(name);
+    _originalHeaderNames?.remove(name);
   }
 
-  void forEach(void f(String name, List<String> values)) {
-    _headers.forEach(f);
+  void forEach(void action(String name, List<String> values)) {
+    _headers.forEach((String name, List<String> values) {
+      String originalName = _originalHeaderName(name);
+      action(originalName, values);
+    });
   }
 
   void noFolding(String name) {
@@ -603,6 +621,11 @@ class _HttpHeaders implements HttpHeaders {
       }
     }
     return value;
+  }
+
+  String _originalHeaderName(String name) {
+    return (_originalHeaderNames == null ? null : _originalHeaderNames[name]) ??
+        name;
   }
 }
 
